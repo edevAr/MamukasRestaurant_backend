@@ -23,7 +23,9 @@
         "seed:prom": "ts-node -r tsconfig-paths/register src/database/seed-promotions-combos.ts",
         "fix:passwords": "ts-node -r tsconfig-paths/register src/database/fix-passwords.ts",
         "update:images": "ts-node -r tsconfig-paths/register src/database/update-menu-images.ts",
-        "update:restaurants": "ts-node -r tsconfig-paths/register src/database/update-restaurant-images.ts"
+        "update:restaurants": "ts-node -r tsconfig-paths/register src/database/update-restaurant-images.ts",
+        "check:duplicates": "ts-node -r tsconfig-paths/register src/database/check-duplicates.ts",
+        "remove:duplicates": "ts-node -r tsconfig-paths/register src/database/remove-duplicates.ts"
   },
   "dependencies": {
     "@nestjs/cache-manager": "^2.1.1",

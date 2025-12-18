@@ -1,24 +1,46 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Reservation, ReservationStatus } from './entities/reservation.entity';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { UpdateReservationDto } from './dto/update-reservation.dto';
+import { NotificationsGateway } from '../notifications/notifications.gateway';
 
 @Injectable()
 export class ReservationsService {
   constructor(
     @InjectRepository(Reservation)
     private reservationsRepository: Repository<Reservation>,
+    @Inject(forwardRef(() => NotificationsGateway))
+    private notificationsGateway: NotificationsGateway,
   ) {}
 
   async create(createReservationDto: CreateReservationDto, clientId: string): Promise<Reservation> {
     const reservation = this.reservationsRepository.create({
       ...createReservationDto,
       clientId,
+      numberOfGuests: createReservationDto.numberOfGuests || 1,
+      time: createReservationDto.time || '12:00',
     });
 
-    return this.reservationsRepository.save(reservation);
+    const savedReservation = await this.reservationsRepository.save(reservation);
+    
+    // Cargar relaciones para enviar al socket
+    const reservationWithRelations = await this.reservationsRepository.findOne({
+      where: { id: savedReservation.id },
+      relations: ['client', 'restaurant'],
+    });
+
+    // Notificar al owner del restaurante en tiempo real
+    if (reservationWithRelations) {
+      console.log(`📅 Emitiendo evento reservation:new para restaurante ${reservationWithRelations.restaurantId}`);
+      this.notificationsGateway.notifyNewReservation(
+        reservationWithRelations.restaurantId,
+        reservationWithRelations,
+      );
+    }
+
+    return reservationWithRelations || savedReservation;
   }
 
   async findAll(restaurantId?: string, clientId?: string): Promise<Reservation[]> {

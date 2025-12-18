@@ -35,7 +35,13 @@ export class MenusController {
     @Query('date') date?: string,
     @Query('type') type?: string,
   ) {
-    const dateObj = date ? new Date(date) : undefined;
+    let dateObj: Date | undefined;
+    if (date) {
+      // Parsear la fecha como string YYYY-MM-DD y crear Date en UTC para evitar problemas de zona horaria
+      const [year, month, day] = date.split('-').map(Number);
+      dateObj = new Date(Date.UTC(year, month - 1, day));
+      console.log(`📅 Parsed date: ${date} -> ${dateObj.toISOString()}`);
+    }
     return this.menusService.findAll(restaurantId, dateObj, type);
   }
 

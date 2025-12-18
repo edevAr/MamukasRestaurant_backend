@@ -10,6 +10,9 @@ import { Server, Socket } from 'socket.io';
 import { UseGuards } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Restaurant } from '../restaurants/entities/restaurant.entity';
 
 @WebSocketGateway({
   cors: {
@@ -29,6 +32,8 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
   constructor(
     private jwtService: JwtService,
     private configService: ConfigService,
+    @InjectRepository(Restaurant)
+    private restaurantsRepository: Repository<Restaurant>,
   ) {}
 
   afterInit(server: Server) {
@@ -50,7 +55,20 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
       client.join(`user:${payload.sub}`);
       
       if (payload.role === 'owner') {
-        client.join(`restaurant:${payload.sub}`);
+        // Buscar el restaurante del owner para unirlo a la sala correcta
+        const restaurant = await this.restaurantsRepository.findOne({
+          where: { ownerId: payload.sub },
+          select: ['id'],
+        });
+        
+        if (restaurant) {
+          // Unir al owner a la sala de su restaurante usando el restaurantId
+          const room = `restaurant:${restaurant.id}`;
+          client.join(room);
+          console.log(`👤 Owner ${payload.sub} unido a sala ${room}`);
+        } else {
+          console.log(`⚠️  No se encontró restaurante para owner ${payload.sub}`);
+        }
       }
     } catch (error) {
       client.disconnect();
@@ -59,6 +77,36 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
 
   handleDisconnect(client: Socket) {
     this.connectedUsers.delete(client.id);
+  }
+
+  // Allow clients to join restaurant rooms
+  @SubscribeMessage('restaurant:join')
+  async handleJoinRestaurant(client: Socket, data: { restaurantId: string }) {
+    const userId = this.connectedUsers.get(client.id);
+    if (!userId) {
+      return { error: 'Not authenticated' };
+    }
+
+    const room = `restaurant:${data.restaurantId}`;
+    client.join(room);
+    console.log(`👤 Cliente ${userId} unido a sala ${room}`);
+    
+    return { success: true, room };
+  }
+
+  // Allow clients to leave restaurant rooms
+  @SubscribeMessage('restaurant:leave')
+  async handleLeaveRestaurant(client: Socket, data: { restaurantId: string }) {
+    const userId = this.connectedUsers.get(client.id);
+    if (!userId) {
+      return { error: 'Not authenticated' };
+    }
+
+    const room = `restaurant:${data.restaurantId}`;
+    client.leave(room);
+    console.log(`👤 Cliente ${userId} salió de sala ${room}`);
+    
+    return { success: true };
   }
 
   // Notify restaurant opening/closing
@@ -101,6 +149,27 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
     this.server.to(`user:${userId}`).emit('order:status', {
       orderId,
       status,
+      timestamp: new Date(),
+    });
+  }
+
+  // Notify new reservation to restaurant owner
+  notifyNewReservation(restaurantId: string, reservation: any) {
+    const room = `restaurant:${restaurantId}`;
+    const socketsInRoom = this.server.sockets.adapter.rooms.get(room);
+    const clientCount = socketsInRoom ? socketsInRoom.size : 0;
+    
+    console.log(`📡 Emitiendo reservation:new a sala ${room} (${clientCount} cliente(s) conectado(s))`);
+    console.log(`📅 Datos de la reserva:`, {
+      id: reservation.id,
+      restaurantId: reservation.restaurantId,
+      client: reservation.client?.firstName + ' ' + reservation.client?.lastName,
+      date: reservation.date,
+      reservationType: reservation.reservationType,
+    });
+    
+    this.server.to(room).emit('reservation:new', {
+      reservation,
       timestamp: new Date(),
     });
   }

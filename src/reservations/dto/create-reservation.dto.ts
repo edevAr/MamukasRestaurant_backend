@@ -12,11 +12,24 @@ export class CreateReservationDto {
   date: string;
 
   @IsString()
-  time: string;
+  @IsOptional()
+  time?: string; // Opcional si es para llevar
 
   @IsNumber()
   @Min(1)
-  numberOfGuests: number;
+  @IsOptional()
+  numberOfGuests?: number; // Opcional si es para llevar
+
+  @IsString()
+  reservationType: string; // 'dine-in' o 'takeout'
+
+  @IsOptional()
+  menuItems?: Array<{
+    menuId: string;
+    name: string;
+    quantity: number;
+    price: number;
+  }>;
 
   @IsString()
   @IsOptional()

@@ -363,31 +363,9 @@ async function seed() {
     const menuRepository = AppDataSource.getRepository(Menu);
     const reviewRepository = AppDataSource.getRepository(Review);
 
-    // Limpiar datos existentes
-    console.log('🧹 Limpiando datos existentes...');
-    try {
-      // Primero eliminar reseñas y menús que dependen de restaurantes
-      await reviewRepository.delete({});
-      await menuRepository.delete({});
-      
-      // Eliminar restaurantes (esto también eliminará las relaciones)
-      await restaurantRepository.delete({});
-      
-      // Eliminar usuarios propietarios existentes con email @restaurant.com
-      const existingOwners = await userRepository.find({ 
-        where: { role: Role.OWNER } 
-      });
-      for (const owner of existingOwners) {
-        if (owner.email.includes('@restaurant.com')) {
-          await userRepository.delete(owner.id);
-          console.log(`   🗑️  Eliminado usuario: ${owner.email}`);
-        }
-      }
-      console.log('   ✅ Limpieza completada');
-    } catch (error) {
-      console.log('   ⚠️  Error durante la limpieza:', error.message);
-      // Continuar de todas formas
-    }
+    // NO limpiar datos existentes - solo actualizar/crear lo que falta
+    console.log('📋 Modo idempotente: verificando y actualizando datos existentes...');
+    console.log('   ℹ️  No se eliminarán datos existentes, solo se crearán/actualizarán según sea necesario');
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -427,73 +405,192 @@ async function seed() {
         console.log(`   ✅ Propietario creado: ${savedOwner.email}`);
       }
 
-      // Crear restaurante
-      const restaurant = restaurantRepository.create({
-        name: data.name,
-        cuisine: data.cuisine,
-        description: data.description,
-        address: data.address,
-        phone: data.phone,
-        email: data.email,
-        latitude: data.latitude,
-        longitude: data.longitude,
-        rating: data.rating,
-        ownerId: savedOwner.id,
-        isActive: true,
-        isOpen: true,
-        openingHours: data.openingHours,
+      // Verificar si el restaurante ya existe (por nombre o email)
+      const existingRestaurant = await restaurantRepository.findOne({
+        where: [
+          { name: data.name },
+          { email: data.email },
+        ],
       });
-      const savedRestaurant = await restaurantRepository.save(restaurant);
-      console.log(`   ✅ Restaurante creado: ${savedRestaurant.name}`);
 
-      // Crear menús
-      for (const menuData of data.menus) {
-        const menu = menuRepository.create({
-          name: menuData.name,
-          description: menuData.description,
-          price: menuData.price,
-          type: menuData.type,
-          available: menuData.available,
-          quantity: menuData.quantity,
-          image: menuData.image,
-          date: today,
-          restaurantId: savedRestaurant.id,
+      let savedRestaurant: Restaurant;
+
+      if (existingRestaurant) {
+        // Si existe, actualizar en lugar de crear duplicado
+        console.log(`   🔄 Restaurante existente encontrado: ${data.name}`);
+        existingRestaurant.name = data.name;
+        existingRestaurant.cuisine = data.cuisine;
+        existingRestaurant.description = data.description;
+        existingRestaurant.address = data.address;
+        existingRestaurant.phone = data.phone;
+        existingRestaurant.email = data.email;
+        existingRestaurant.latitude = data.latitude;
+        existingRestaurant.longitude = data.longitude;
+        existingRestaurant.rating = data.rating;
+        existingRestaurant.ownerId = savedOwner.id;
+        existingRestaurant.isActive = true;
+        existingRestaurant.isOpen = true;
+        existingRestaurant.openingHours = data.openingHours;
+        savedRestaurant = await restaurantRepository.save(existingRestaurant);
+        console.log(`   ✅ Restaurante actualizado: ${savedRestaurant.name}`);
+      } else {
+        // Crear nuevo restaurante
+        const restaurant = restaurantRepository.create({
+          name: data.name,
+          cuisine: data.cuisine,
+          description: data.description,
+          address: data.address,
+          phone: data.phone,
+          email: data.email,
+          latitude: data.latitude,
+          longitude: data.longitude,
+          rating: data.rating,
+          ownerId: savedOwner.id,
+          isActive: true,
+          isOpen: true,
+          openingHours: data.openingHours,
         });
-        await menuRepository.save(menu);
+        savedRestaurant = await restaurantRepository.save(restaurant);
+        console.log(`   ✅ Restaurante creado: ${savedRestaurant.name}`);
       }
-      console.log(`   ✅ ${data.menus.length} platos creados`);
 
-      // Crear algunas reseñas de ejemplo
-      const reviewCount = Math.floor(Math.random() * 20) + 10; // 10-30 reseñas
-      for (let i = 0; i < reviewCount; i++) {
-        // Buscar o crear cliente
-        let client = await userRepository.findOne({ where: { email: `client${i}@example.com` } });
-        if (!client) {
-          client = userRepository.create({
-            email: `client${i}@example.com`,
-            password: hashedPassword,
-            firstName: `Cliente${i}`,
-            lastName: 'Test',
-            role: Role.CLIENT,
-            isActive: true,
+      // Crear menús para múltiples días (hoy y los próximos 7 días)
+      // Solo crear si no existen ya
+      const daysToCreate = 7;
+      let totalMenusCreated = 0;
+      let totalMenusSkipped = 0;
+      
+      for (let dayOffset = 0; dayOffset < daysToCreate; dayOffset++) {
+        const menuDate = new Date(today);
+        menuDate.setDate(today.getDate() + dayOffset);
+        menuDate.setHours(0, 0, 0, 0);
+
+        for (const menuData of data.menus) {
+          // Verificar si el menú ya existe para este restaurante, fecha y nombre
+          const existingMenu = await menuRepository.findOne({
+            where: {
+              restaurantId: savedRestaurant.id,
+              name: menuData.name,
+              date: menuDate,
+            },
           });
-          client = await userRepository.save(client);
-        }
 
-        const review = reviewRepository.create({
-          rating: Math.floor(Math.random() * 2) + 4, // 4-5 estrellas
-          comment: `Excelente restaurante! ${data.name} es increíble.`,
-          restaurantId: savedRestaurant.id,
-          clientId: client.id,
-        });
-        await reviewRepository.save(review);
+          if (existingMenu) {
+            // Si existe, actualizar en lugar de crear
+            existingMenu.description = menuData.description;
+            existingMenu.price = menuData.price;
+            existingMenu.type = menuData.type;
+            existingMenu.available = menuData.available;
+            existingMenu.quantity = menuData.quantity;
+            existingMenu.image = menuData.image;
+            await menuRepository.save(existingMenu);
+            totalMenusSkipped++;
+          } else {
+            // Si no existe, crear nuevo
+            const menu = menuRepository.create({
+              name: menuData.name,
+              description: menuData.description,
+              price: menuData.price,
+              type: menuData.type,
+              available: menuData.available,
+              quantity: menuData.quantity,
+              image: menuData.image,
+              date: menuDate,
+              restaurantId: savedRestaurant.id,
+            });
+            await menuRepository.save(menu);
+            totalMenusCreated++;
+          }
+        }
       }
-      console.log(`   ✅ ${reviewCount} reseñas creadas`);
+      console.log(`   ✅ ${totalMenusCreated} platos creados, ${totalMenusSkipped} actualizados (${data.menus.length} platos × ${daysToCreate} días)`);
+
+      // Crear algunas reseñas de ejemplo solo si no existen
+      const existingReviewsCount = await reviewRepository.count({
+        where: { restaurantId: savedRestaurant.id },
+      });
+
+      if (existingReviewsCount === 0) {
+        const reviewCount = Math.floor(Math.random() * 20) + 10; // 10-30 reseñas
+        for (let i = 0; i < reviewCount; i++) {
+          // Buscar o crear cliente
+          let client = await userRepository.findOne({ where: { email: `client${i}@example.com` } });
+          if (!client) {
+            client = userRepository.create({
+              email: `client${i}@example.com`,
+              password: hashedPassword,
+              firstName: `Cliente${i}`,
+              lastName: 'Test',
+              role: Role.CLIENT,
+              isActive: true,
+            });
+            client = await userRepository.save(client);
+          }
+
+          // Verificar si el cliente ya tiene una reseña para este restaurante
+          const existingReview = await reviewRepository.findOne({
+            where: {
+              restaurantId: savedRestaurant.id,
+              clientId: client.id,
+            },
+          });
+
+          if (!existingReview) {
+            const review = reviewRepository.create({
+              rating: Math.floor(Math.random() * 2) + 4, // 4-5 estrellas
+              comment: `Excelente restaurante! ${data.name} es increíble.`,
+              restaurantId: savedRestaurant.id,
+              clientId: client.id,
+            });
+            await reviewRepository.save(review);
+          }
+        }
+        console.log(`   ✅ Reseñas de ejemplo creadas`);
+      } else {
+        console.log(`   ⏭️  Ya existen ${existingReviewsCount} reseñas, omitiendo creación`);
+      }
     }
+
+    // Crear usuario administrador
+    console.log('\n👤 Creando usuario administrador...');
+    const adminEmail = 'admin@mamukas.com';
+    let admin = await userRepository.findOne({ where: { email: adminEmail } });
+    
+    if (admin) {
+      console.log(`   🔄 Usuario admin existente encontrado: ${adminEmail}`);
+      admin.password = hashedPassword;
+      admin.firstName = 'Admin';
+      admin.lastName = 'Mamukas';
+      admin.role = Role.ADMIN;
+      admin.isActive = true;
+      admin = await userRepository.save(admin);
+      console.log(`   ✅ Admin actualizado: ${admin.email}`);
+    } else {
+      admin = userRepository.create({
+        email: adminEmail,
+        password: hashedPassword,
+        firstName: 'Admin',
+        lastName: 'Mamukas',
+        role: Role.ADMIN,
+        isActive: true,
+      });
+      admin = await userRepository.save(admin);
+      console.log(`   ✅ Admin creado: ${admin.email}`);
+    }
+
+    // Contar total de menús creados
+    const totalMenus = await menuRepository.count();
+    const menusPerRestaurant = restaurantsData[0]?.menus?.length || 0;
+    const daysCreated = 7;
 
     console.log('\n🎉 ¡Seed completado exitosamente!');
     console.log(`✅ ${restaurantsData.length} restaurantes creados`);
+    console.log(`✅ ${totalMenus} menús creados (${menusPerRestaurant} platos × ${restaurantsData.length} restaurantes × ${daysCreated} días)`);
     console.log(`✅ Todos los propietarios tienen la contraseña: password123`);
+    console.log(`✅ Usuario admin creado:`);
+    console.log(`   📧 Email: ${adminEmail}`);
+    console.log(`   🔑 Contraseña: password123`);
+    console.log(`\n📅 Los menús están disponibles para hoy y los próximos ${daysCreated - 1} días`);
 
   } catch (error) {
     console.error('❌ Error durante el seed:', error);

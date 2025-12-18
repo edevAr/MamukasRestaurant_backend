@@ -34,17 +34,67 @@ export class MenusService {
     }
 
     if (date) {
-      query.andWhere('menu.date = :date', { date });
+      // Normalizar la fecha para comparación
+      // Extraer solo año, mes y día para evitar problemas de zona horaria
+      const year = date.getUTCFullYear();
+      const month = date.getUTCMonth() + 1;
+      const day = date.getUTCDate();
+      
+      // Crear fecha normalizada (inicio y fin del día en UTC)
+      const startOfDay = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+      const endOfDay = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
+      
+      console.log(`🔍 Comparing menu date:`, {
+        original: date.toISOString(),
+        startOfDay: startOfDay.toISOString(),
+        endOfDay: endOfDay.toISOString(),
+        year,
+        month,
+        day
+      });
+      
+      // Usar BETWEEN para comparar el rango del día completo
+      // Esto funciona mejor con TypeORM y PostgreSQL
+      query.andWhere('menu.date >= :startOfDay AND menu.date <= :endOfDay', {
+        startOfDay: startOfDay,
+        endOfDay: endOfDay,
+      });
     }
 
     if (type) {
       query.andWhere('menu.type = :type', { type });
     }
 
-    return query
+    // Solo mostrar menús disponibles
+    query.andWhere('menu.available = :available', { available: true });
+
+    // Log la query SQL generada para debug
+    const sql = query.getSql();
+    const params = query.getParameters();
+    console.log(`📋 SQL Query:`, sql);
+    console.log(`📋 Query Parameters:`, params);
+
+    const results = await query
       .orderBy('menu.isPromoted', 'DESC')
+      .addOrderBy('menu.type', 'ASC')
       .addOrderBy('menu.createdAt', 'DESC')
       .getMany();
+
+    console.log(`📋 MenusService.findAll: Found ${results.length} menus for restaurantId=${restaurantId}, date=${date?.toISOString()}`);
+    
+    // Si no hay resultados, verificar si hay menús sin filtro de fecha
+    if (results.length === 0 && restaurantId) {
+      const allMenus = await this.menusRepository.find({
+        where: { restaurantId },
+        take: 5,
+      });
+      console.log(`⚠️ No menus found for date, but found ${allMenus.length} total menus for this restaurant`);
+      if (allMenus.length > 0) {
+        console.log(`📅 Sample menu dates:`, allMenus.map(m => ({ id: m.id, date: m.date, name: m.name })));
+      }
+    }
+    
+    return results;
   }
 
   async findOne(id: string): Promise<Menu> {

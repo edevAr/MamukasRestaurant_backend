@@ -33,6 +33,17 @@ export class Reservation {
   @Column()
   numberOfGuests: number;
 
+  @Column({ default: 'dine-in' }) // 'dine-in' o 'takeout'
+  reservationType: string;
+
+  @Column('jsonb', { nullable: true })
+  menuItems: Array<{
+    menuId: string;
+    name: string;
+    quantity: number;
+    price: number;
+  }>;
+
   @Column('text', { nullable: true })
   notes: string;
 
