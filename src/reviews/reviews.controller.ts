@@ -65,5 +65,16 @@ export class ReviewsController {
   ) {
     return this.reviewsService.adjustRating(restaurantId, body.adjustment);
   }
+
+  @Post(':id/respond')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.OWNER)
+  respondToReview(
+    @Param('id') id: string,
+    @Body() body: { response: string },
+    @Request() req,
+  ) {
+    return this.reviewsService.respondToReview(id, body.response, req.user.id, req.user.role);
+  }
 }
 

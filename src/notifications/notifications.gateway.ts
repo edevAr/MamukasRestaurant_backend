@@ -189,5 +189,20 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
       timestamp: new Date(),
     });
   }
+
+  // Broadcast announcement to all users
+  broadcastAnnouncement(announcement: any) {
+    if (!this.server) {
+      return;
+    }
+
+    console.log(`📢 Broadcasting announcement to all users: ${announcement.title}`);
+    
+    // Emit to all connected users
+    this.server.emit('announcement:new', {
+      announcement,
+      timestamp: new Date(),
+    });
+  }
 }
 

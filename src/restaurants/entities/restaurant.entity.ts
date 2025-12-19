@@ -76,6 +76,18 @@ export class Restaurant {
   @Column({ default: false })
   isPromoted: boolean;
 
+  @Column('text', { nullable: true })
+  promotionText: string | null; // Texto de la publicidad
+
+  @Column({ nullable: true })
+  promotionImage: string | null; // Imagen de la publicidad
+
+  @Column({ type: 'timestamp', nullable: true })
+  promotionStartDate: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  promotionEndDate: Date | null;
+
   @ManyToOne(() => User, (user) => user.restaurants)
   @JoinColumn({ name: 'ownerId' })
   owner: User;

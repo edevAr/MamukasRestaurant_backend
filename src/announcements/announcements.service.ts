@@ -1,19 +1,29 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Announcement } from './entities/announcement.entity';
 import { CreateAnnouncementDto } from './dto/create-announcement.dto';
+import { NotificationsGateway } from '../notifications/notifications.gateway';
 
 @Injectable()
 export class AnnouncementsService {
   constructor(
     @InjectRepository(Announcement)
     private announcementsRepository: Repository<Announcement>,
+    @Inject(forwardRef(() => NotificationsGateway))
+    private notificationsGateway: NotificationsGateway,
   ) {}
 
   async create(createAnnouncementDto: CreateAnnouncementDto): Promise<Announcement> {
     const announcement = this.announcementsRepository.create(createAnnouncementDto);
-    return this.announcementsRepository.save(announcement);
+    const savedAnnouncement = await this.announcementsRepository.save(announcement);
+    
+    // Send announcement to all users via socket if active
+    if (savedAnnouncement.isActive) {
+      this.notificationsGateway.broadcastAnnouncement(savedAnnouncement);
+    }
+    
+    return savedAnnouncement;
   }
 
   async findAll(activeOnly: boolean = false): Promise<Announcement[]> {

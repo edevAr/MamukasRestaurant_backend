@@ -25,7 +25,9 @@
         "update:images": "ts-node -r tsconfig-paths/register src/database/update-menu-images.ts",
         "update:restaurants": "ts-node -r tsconfig-paths/register src/database/update-restaurant-images.ts",
         "check:duplicates": "ts-node -r tsconfig-paths/register src/database/check-duplicates.ts",
-        "remove:duplicates": "ts-node -r tsconfig-paths/register src/database/remove-duplicates.ts"
+        "remove:duplicates": "ts-node -r tsconfig-paths/register src/database/remove-duplicates.ts",
+        "migrate:promotion": "ts-node -r tsconfig-paths/register src/database/migrations/add-promotion-fields.ts",
+        "activate:restaurants": "ts-node -r tsconfig-paths/register src/database/activate-restaurants.ts"
   },
   "dependencies": {
     "@nestjs/cache-manager": "^2.1.1",

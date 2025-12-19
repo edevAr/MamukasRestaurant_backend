@@ -38,7 +38,14 @@ export class RestaurantsController {
     const lat = latitude ? parseFloat(latitude) : undefined;
     const lng = longitude ? parseFloat(longitude) : undefined;
     const rad = radius ? parseFloat(radius) : undefined;
-    return this.restaurantsService.findAll(lat, lng, rad);
+    return this.restaurantsService.findAll(lat, lng, rad, false);
+  }
+
+  @Get('admin/all')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  findAllForAdmin() {
+    return this.restaurantsService.findAll(undefined, undefined, undefined, true);
   }
 
   @Get(':id')
@@ -90,6 +97,26 @@ export class RestaurantsController {
   @Roles(Role.ADMIN)
   unpromote(@Param('id') id: string) {
     return this.restaurantsService.unpromote(id);
+  }
+
+  @Post(':id/promotion')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  updatePromotion(
+    @Param('id') id: string,
+    @Body() body: {
+      promotionText?: string;
+      promotionImage?: string;
+      promotionStartDate?: string | null;
+      promotionEndDate?: string | null;
+    },
+  ) {
+    return this.restaurantsService.updatePromotion(id, {
+      promotionText: body.promotionText,
+      promotionImage: body.promotionImage,
+      promotionStartDate: body.promotionStartDate ? new Date(body.promotionStartDate) : null,
+      promotionEndDate: body.promotionEndDate ? new Date(body.promotionEndDate) : null,
+    });
   }
 
   @Patch(':id/opening-hours')

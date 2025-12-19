@@ -117,5 +117,19 @@ export class ReviewsService {
     restaurant.rating = Math.max(0, Math.min(5, restaurant.rating + adjustment));
     await this.restaurantsService.update(restaurantId, restaurant, '', null as any);
   }
+
+  async respondToReview(id: string, response: string, userId: string, userRole: Role): Promise<Review> {
+    const review = await this.findOne(id);
+
+    // Only admin or restaurant owner can respond
+    if (userRole === Role.ADMIN || (userRole === Role.OWNER && review.restaurantId)) {
+      review.response = response;
+      review.respondedBy = userId;
+      review.respondedAt = new Date();
+      return this.reviewsRepository.save(review);
+    }
+
+    throw new ForbiddenException('You do not have permission to respond to this review');
+  }
 }
 

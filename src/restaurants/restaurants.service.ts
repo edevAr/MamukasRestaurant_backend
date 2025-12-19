@@ -28,10 +28,10 @@ export class RestaurantsService {
     latitude?: number,
     longitude?: number,
     radius?: number,
+    includeInactive: boolean = false,
   ): Promise<Restaurant[]> {
     const query = this.restaurantsRepository
       .createQueryBuilder('restaurant')
-      .where('restaurant.isActive = :isActive', { isActive: true })
       .leftJoinAndSelect('restaurant.owner', 'owner')
       .select([
         'restaurant.id',
@@ -47,6 +47,7 @@ export class RestaurantsService {
         'restaurant.logo',
         'restaurant.openingHours',
         'restaurant.isOpen',
+        'restaurant.isActive',
         'restaurant.rating',
         'restaurant.totalReviews',
         'restaurant.isPromoted',
@@ -54,6 +55,11 @@ export class RestaurantsService {
         'owner.firstName',
         'owner.lastName',
       ]);
+    
+    // Only filter by isActive if not including inactive (for public/client view)
+    if (!includeInactive) {
+      query.where('restaurant.isActive = :isActive', { isActive: true });
+    }
 
     if (latitude && longitude && radius) {
       // Calculate distance using Haversine formula
@@ -141,6 +147,36 @@ export class RestaurantsService {
   async unpromote(id: string): Promise<Restaurant> {
     const restaurant = await this.findOne(id);
     restaurant.isPromoted = false;
+    restaurant.promotionText = null;
+    restaurant.promotionImage = null;
+    restaurant.promotionStartDate = null;
+    restaurant.promotionEndDate = null;
+    return this.restaurantsRepository.save(restaurant);
+  }
+
+  async updatePromotion(
+    id: string,
+    promotionData: {
+      promotionText?: string;
+      promotionImage?: string;
+      promotionStartDate?: Date | null;
+      promotionEndDate?: Date | null;
+    },
+  ): Promise<Restaurant> {
+    const restaurant = await this.findOne(id);
+    restaurant.isPromoted = true;
+    if (promotionData.promotionText !== undefined) {
+      restaurant.promotionText = promotionData.promotionText;
+    }
+    if (promotionData.promotionImage !== undefined) {
+      restaurant.promotionImage = promotionData.promotionImage;
+    }
+    if (promotionData.promotionStartDate !== undefined) {
+      restaurant.promotionStartDate = promotionData.promotionStartDate;
+    }
+    if (promotionData.promotionEndDate !== undefined) {
+      restaurant.promotionEndDate = promotionData.promotionEndDate;
+    }
     return this.restaurantsRepository.save(restaurant);
   }
 

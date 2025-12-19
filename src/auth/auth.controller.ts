@@ -5,12 +5,15 @@ import { LocalAuthGuard } from './guards/local-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
 import { CreateUserDto } from '../users/dto/create-user.dto';
+import { RestaurantsService } from '../restaurants/restaurants.service';
+import { Role } from '../common/enums/role.enum';
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly usersService: UsersService,
+    private readonly restaurantsService: RestaurantsService,
   ) {}
 
   @Post('register')
@@ -21,6 +24,27 @@ export class AuthController {
     }
     
     const user = await this.usersService.create(createUserDto);
+    
+    // If user is owner and has restaurant info, create restaurant
+    if (user.role === Role.OWNER && createUserDto.restaurantInfo) {
+      const { restaurantInfo } = createUserDto;
+      
+      if (restaurantInfo.name && restaurantInfo.address && 
+          restaurantInfo.latitude !== undefined && restaurantInfo.longitude !== undefined) {
+        await this.restaurantsService.create({
+          name: restaurantInfo.name,
+          address: restaurantInfo.address,
+          latitude: restaurantInfo.latitude,
+          longitude: restaurantInfo.longitude,
+          image: restaurantInfo.image,
+          description: `Restaurante ${restaurantInfo.name}`,
+          email: user.email,
+          phone: createUserDto.phone,
+          isActive: false, // Restaurant needs validation
+        }, user.id);
+      }
+    }
+    
     const { password, ...result } = user;
     return result;
   }

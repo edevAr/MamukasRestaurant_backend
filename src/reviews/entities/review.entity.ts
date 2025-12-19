@@ -37,6 +37,15 @@ export class Review {
   @Column()
   restaurantId: string;
 
+  @Column('text', { nullable: true })
+  response: string | null; // Respuesta del restaurante/admin
+
+  @Column({ nullable: true })
+  respondedBy: string | null; // ID del usuario que respondió (owner o admin)
+
+  @Column({ type: 'timestamp', nullable: true })
+  respondedAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 
