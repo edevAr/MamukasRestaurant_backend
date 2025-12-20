@@ -41,7 +41,11 @@ export class UsersService {
   }
 
   async findByEmail(email: string): Promise<User | null> {
-    return this.usersRepository.findOne({ where: { email } });
+    // Normalize email (trim and lowercase) for case-insensitive search
+    const normalizedEmail = email.trim().toLowerCase();
+    return this.usersRepository.findOne({ 
+      where: { email: normalizedEmail } 
+    });
   }
 
   async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {

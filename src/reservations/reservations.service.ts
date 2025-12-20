@@ -5,6 +5,7 @@ import { Reservation, ReservationStatus } from './entities/reservation.entity';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { UpdateReservationDto } from './dto/update-reservation.dto';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
+import { EventsService } from '../events/events.service';
 
 @Injectable()
 export class ReservationsService {
@@ -13,6 +14,7 @@ export class ReservationsService {
     private reservationsRepository: Repository<Reservation>,
     @Inject(forwardRef(() => NotificationsGateway))
     private notificationsGateway: NotificationsGateway,
+    private eventsService: EventsService,
   ) {}
 
   async create(createReservationDto: CreateReservationDto, clientId: string): Promise<Reservation> {
@@ -31,9 +33,17 @@ export class ReservationsService {
       relations: ['client', 'restaurant'],
     });
 
-    // Notificar al owner del restaurante en tiempo real
+    // Notificar al owner del restaurante en tiempo real via SSE
     if (reservationWithRelations) {
       console.log(`📅 Emitiendo evento reservation:new para restaurante ${reservationWithRelations.restaurantId}`);
+      
+      // Emit via SSE
+      this.eventsService.emitNewReservation(
+        reservationWithRelations.restaurantId,
+        reservationWithRelations,
+      );
+      
+      // Also emit via socket for backward compatibility (can be removed later)
       this.notificationsGateway.notifyNewReservation(
         reservationWithRelations.restaurantId,
         reservationWithRelations,

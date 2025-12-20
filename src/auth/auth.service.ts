@@ -11,27 +11,50 @@ export class AuthService {
   ) {}
 
   async validateUser(email: string, password: string): Promise<any> {
-    const user = await this.usersService.findByEmail(email);
+    console.log(`🔍 validateUser called with email: "${email}"`);
+    
+    // Normalize email (trim and lowercase)
+    const normalizedEmail = email.trim().toLowerCase();
+    console.log(`📧 Normalized email: "${normalizedEmail}"`);
+    
+    const user = await this.usersService.findByEmail(normalizedEmail);
     if (!user) {
+      console.log(`❌ User not found for email: "${normalizedEmail}"`);
       return null;
     }
+    
+    console.log(`✅ User found: ${user.email} (ID: ${user.id}, Role: ${user.role}, StaffRole: ${user.staffRole}, Active: ${user.isActive})`);
     
     // Check if user has a password set
     if (!user.password) {
+      console.log(`❌ User has no password set`);
       return null;
     }
     
+    console.log(`🔐 Password exists, length: ${user.password.length}`);
+    
     try {
       const isPasswordValid = await bcrypt.compare(password, user.password);
+      console.log(`🔑 Password comparison result: ${isPasswordValid ? '✅ VALID' : '❌ INVALID'}`);
+      
       if (isPasswordValid) {
+        // Check if user is active
+        if (user.isActive === false) {
+          console.log(`⚠️ User account is blocked`);
+          return null;
+        }
+        
         const { password, ...result } = user;
+        console.log(`✅ User validated successfully: ${result.email}`);
         return result;
       }
     } catch (error) {
       // If bcrypt.compare fails (e.g., invalid hash), return null
+      console.error(`❌ Error comparing password:`, error);
       return null;
     }
     
+    console.log(`❌ Password validation failed`);
     return null;
   }
 
@@ -55,6 +78,8 @@ export class AuthService {
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
+        staffRole: user.staffRole || null,
+        restaurantId: user.restaurantId || null,
       },
     };
   }

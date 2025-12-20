@@ -41,6 +41,12 @@ export class User {
   })
   role: Role;
 
+  @Column({ nullable: true })
+  staffRole: string; // 'administrator', 'manager', 'cashier', 'cook', 'waiter'
+
+  @Column({ nullable: true })
+  restaurantId: string; // ID del restaurante al que pertenece el personal
+
   @Column({ default: true })
   isActive: boolean;
 

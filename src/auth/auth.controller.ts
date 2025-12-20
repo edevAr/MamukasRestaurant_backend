@@ -31,7 +31,7 @@ export class AuthController {
       
       if (restaurantInfo.name && restaurantInfo.address && 
           restaurantInfo.latitude !== undefined && restaurantInfo.longitude !== undefined) {
-        await this.restaurantsService.create({
+        const restaurant = await this.restaurantsService.create({
           name: restaurantInfo.name,
           address: restaurantInfo.address,
           latitude: restaurantInfo.latitude,
@@ -42,10 +42,20 @@ export class AuthController {
           phone: createUserDto.phone,
           isActive: false, // Restaurant needs validation
         }, user.id);
+        
+        // Actualizar el usuario para que tenga staffRole='administrator' y restaurantId
+        user.staffRole = 'administrator';
+        user.restaurantId = restaurant.id;
+        await this.usersService.update(user.id, {
+          staffRole: 'administrator',
+          restaurantId: restaurant.id,
+        });
       }
     }
     
-    const { password, ...result } = user;
+    // Obtener el usuario actualizado con staffRole y restaurantId
+    const updatedUser = await this.usersService.findOne(user.id);
+    const { password, ...result } = updatedUser;
     return result;
   }
 
@@ -58,7 +68,20 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Post('verify')
   async verify(@Request() req) {
-    return { user: req.user };
+    // Obtener el usuario completo de la base de datos para incluir staffRole y restaurantId
+    const fullUser = await this.usersService.findOne(req.user.id);
+    const { password, ...userWithoutPassword } = fullUser;
+    return { 
+      user: {
+        id: userWithoutPassword.id,
+        email: userWithoutPassword.email,
+        firstName: userWithoutPassword.firstName,
+        lastName: userWithoutPassword.lastName,
+        role: userWithoutPassword.role,
+        staffRole: userWithoutPassword.staffRole || null,
+        restaurantId: userWithoutPassword.restaurantId || null,
+      }
+    };
   }
 }
 

@@ -578,6 +578,89 @@ async function seed() {
       console.log(`   ✅ Admin creado: ${admin.email}`);
     }
 
+    // Crear usuarios de staff para "La Cocina Italiana"
+    console.log('\n👥 Creando usuarios de staff para La Cocina Italiana...');
+    const cocinaItaliana = await restaurantRepository.findOne({ 
+      where: { name: 'La Cocina Italiana' } 
+    });
+
+    if (cocinaItaliana) {
+      const staffUsers = [
+        {
+          email: 'admin.italiana@restaurant.com',
+          firstName: 'Giuseppe',
+          lastName: 'Admin',
+          staffRole: 'administrator',
+          phone: '+1 234 567 8901',
+        },
+        {
+          email: 'gerente.italiana@restaurant.com',
+          firstName: 'Alessandro',
+          lastName: 'Manager',
+          staffRole: 'manager',
+          phone: '+1 234 567 8902',
+        },
+        {
+          email: 'cajero.italiana@restaurant.com',
+          firstName: 'Maria',
+          lastName: 'Cashier',
+          staffRole: 'cashier',
+          phone: '+1 234 567 8903',
+        },
+        {
+          email: 'cocinero.italiana@restaurant.com',
+          firstName: 'Marco',
+          lastName: 'Cook',
+          staffRole: 'cook',
+          phone: '+1 234 567 8904',
+        },
+        {
+          email: 'mesero.italiana@restaurant.com',
+          firstName: 'Luca',
+          lastName: 'Waiter',
+          staffRole: 'waiter',
+          phone: '+1 234 567 8905',
+        },
+      ];
+
+      for (const staffData of staffUsers) {
+        let staffUser = await userRepository.findOne({ 
+          where: { email: staffData.email } 
+        });
+
+        if (staffUser) {
+          console.log(`   🔄 Usuario de staff existente encontrado: ${staffData.email}`);
+          staffUser.password = hashedPassword;
+          staffUser.firstName = staffData.firstName;
+          staffUser.lastName = staffData.lastName;
+          staffUser.staffRole = staffData.staffRole;
+          staffUser.restaurantId = cocinaItaliana.id;
+          staffUser.role = Role.CLIENT; // Los staff son clientes con staffRole
+          staffUser.isActive = true;
+          staffUser.phone = staffData.phone;
+          staffUser = await userRepository.save(staffUser);
+          console.log(`   ✅ Staff actualizado: ${staffUser.email} (${staffData.staffRole})`);
+        } else {
+          staffUser = userRepository.create({
+            email: staffData.email,
+            password: hashedPassword,
+            firstName: staffData.firstName,
+            lastName: staffData.lastName,
+            staffRole: staffData.staffRole,
+            restaurantId: cocinaItaliana.id,
+            role: Role.CLIENT, // Los staff son clientes con staffRole
+            isActive: true,
+            phone: staffData.phone,
+          });
+          staffUser = await userRepository.save(staffUser);
+          console.log(`   ✅ Staff creado: ${staffUser.email} (${staffData.staffRole})`);
+        }
+      }
+      console.log(`   ✅ ${staffUsers.length} usuarios de staff creados/actualizados para La Cocina Italiana`);
+    } else {
+      console.log(`   ⚠️  No se encontró el restaurante "La Cocina Italiana", omitiendo creación de staff`);
+    }
+
     // Contar total de menús creados
     const totalMenus = await menuRepository.count();
     const menusPerRestaurant = restaurantsData[0]?.menus?.length || 0;
@@ -590,6 +673,12 @@ async function seed() {
     console.log(`✅ Usuario admin creado:`);
     console.log(`   📧 Email: ${adminEmail}`);
     console.log(`   🔑 Contraseña: password123`);
+    console.log(`\n👥 Usuarios de staff para La Cocina Italiana (todos con contraseña: password123):`);
+    console.log(`   📧 Admin: admin.italiana@restaurant.com`);
+    console.log(`   📧 Gerente: gerente.italiana@restaurant.com`);
+    console.log(`   📧 Cajero: cajero.italiana@restaurant.com`);
+    console.log(`   📧 Cocinero: cocinero.italiana@restaurant.com`);
+    console.log(`   📧 Mesero: mesero.italiana@restaurant.com`);
     console.log(`\n📅 Los menús están disponibles para hoy y los próximos ${daysCreated - 1} días`);
 
   } catch (error) {

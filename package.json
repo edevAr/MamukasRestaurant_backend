@@ -27,6 +27,9 @@
         "check:duplicates": "ts-node -r tsconfig-paths/register src/database/check-duplicates.ts",
         "remove:duplicates": "ts-node -r tsconfig-paths/register src/database/remove-duplicates.ts",
         "migrate:promotion": "ts-node -r tsconfig-paths/register src/database/migrations/add-promotion-fields.ts",
+        "migrate:staff": "ts-node -r tsconfig-paths/register src/database/migrations/add-staff-role-fields.ts",
+        "fix:staff-passwords": "ts-node -r tsconfig-paths/register src/database/fix-staff-passwords.ts",
+        "check:staff": "ts-node -r tsconfig-paths/register src/database/check-staff-users.ts",
         "activate:restaurants": "ts-node -r tsconfig-paths/register src/database/activate-restaurants.ts"
   },
   "dependencies": {

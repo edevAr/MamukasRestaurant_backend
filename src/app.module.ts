@@ -18,6 +18,8 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { PromotionsModule } from './promotions/promotions.module';
 import { MenuReservationsModule } from './menu-reservations/menu-reservations.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
+import { EventsModule } from './events/events.module';
+import { SalesModule } from './sales/sales.module';
 
 @Module({
   imports: [
@@ -103,6 +105,8 @@ import { AnnouncementsModule } from './announcements/announcements.module';
     PromotionsModule,
     MenuReservationsModule,
     AnnouncementsModule,
+    EventsModule,
+    SalesModule,
   ],
 })
 export class AppModule {}

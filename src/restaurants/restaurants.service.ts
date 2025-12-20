@@ -6,6 +6,7 @@ import { CreateRestaurantDto } from './dto/create-restaurant.dto';
 import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
 import { Role } from '../common/enums/role.enum';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
+import { EventsService } from '../events/events.service';
 
 @Injectable()
 export class RestaurantsService {
@@ -14,6 +15,7 @@ export class RestaurantsService {
     private restaurantsRepository: Repository<Restaurant>,
     @Inject(forwardRef(() => NotificationsGateway))
     private notificationsGateway: NotificationsGateway,
+    private eventsService: EventsService,
   ) {}
 
   async create(createRestaurantDto: CreateRestaurantDto, ownerId: string): Promise<Restaurant> {
@@ -98,6 +100,12 @@ export class RestaurantsService {
     }
 
     return restaurant;
+  }
+
+  async findByOwnerId(ownerId: string): Promise<Restaurant | null> {
+    return this.restaurantsRepository.findOne({
+      where: { ownerId },
+    });
   }
 
   async update(
@@ -211,11 +219,21 @@ export class RestaurantsService {
     const savedRestaurant = await this.restaurantsRepository.save(restaurant);
     console.log(`💾 Restaurant saved with isOpen: ${savedRestaurant.isOpen}`);
 
-    // Emit socket event to notify all clients
+    // Emit SSE event to notify all clients
     const message = savedRestaurant.isOpen 
       ? `${restaurant.name} está ahora abierto` 
       : `${restaurant.name} está ahora cerrado`;
     
+    console.log(`📡 Emitting restaurant status via SSE: ${savedRestaurant.id}, isOpen: ${savedRestaurant.isOpen}`);
+    
+    // Emit via SSE
+    this.eventsService.emitRestaurantStatus(
+      savedRestaurant.id,
+      savedRestaurant.isOpen,
+      message
+    );
+
+    // Also emit via socket for backward compatibility (can be removed later)
     this.notificationsGateway.notifyRestaurantStatus(
       savedRestaurant.id,
       savedRestaurant.isOpen,
