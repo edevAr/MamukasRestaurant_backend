@@ -84,6 +84,45 @@ El backend utiliza **PostgreSQL** como base de datos principal y **Redis** para 
 
 TypeORM crea automáticamente las tablas en desarrollo. Para producción, usar migraciones.
 
+### Migraciones de Base de Datos
+
+El proyecto incluye migraciones para mantener el esquema de la base de datos actualizado.
+
+#### Ejecutar todas las migraciones
+
+Para ejecutar todas las migraciones de una vez:
+
+```bash
+npm run migrate:all
+```
+
+Este comando ejecutará las siguientes migraciones en orden:
+
+1. **Staff Role Fields** - Agrega campos `staffRole` y `restaurantId` a la tabla `users`
+2. **Promotion Fields** - Agrega campos de promoción a `restaurants` y campos de respuesta a `reviews`
+3. **Logo Field** - Agrega columna `logo` a la tabla `restaurants`
+4. **Unique Constraints** - Agrega restricciones únicas para `name` y `email` en `restaurants`
+
+#### Ejecutar migraciones individuales
+
+Si necesitas ejecutar una migración específica:
+
+```bash
+# Migración de campos de staff
+npm run migrate:staff
+
+# Migración de campos de promoción
+npm run migrate:promotion
+
+# Migración de campo logo
+npm run migrate:logo
+
+# Migración de restricciones únicas
+npm run migrate:unique
+```
+
+**Nota:** Las migraciones son idempotentes y pueden ejecutarse múltiples veces de forma segura. Si una migración ya está aplicada, se omitirá automáticamente.
+
 **📖 Guía completa:** Ver [SETUP_DATABASE.md](./SETUP_DATABASE.md) para instrucciones detalladas.
 
 ## 📦 Estructura

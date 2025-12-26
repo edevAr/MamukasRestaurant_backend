@@ -18,6 +18,7 @@ import { Promotion } from '../../promotions/entities/promotion.entity';
 
 @Entity('restaurants')
 @Index(['latitude', 'longitude'])
+@Index('UQ_restaurants_name_lower', { synchronize: false }) // Índice único case-insensitive creado por migración
 export class Restaurant {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -87,6 +88,12 @@ export class Restaurant {
 
   @Column({ type: 'timestamp', nullable: true })
   promotionEndDate: Date | null;
+
+  @Column({ default: true })
+  maxWaitTimeEnabled: boolean; // Habilitar tiempo máximo de espera
+
+  @Column({ default: 20 })
+  maxWaitTimeMinutes: number; // Tiempo máximo en minutos (por defecto 20)
 
   @ManyToOne(() => User, (user) => user.restaurants)
   @JoinColumn({ name: 'ownerId' })

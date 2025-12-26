@@ -7,8 +7,9 @@ export class UpdateSaleStatusDto {
 }
 
 export class UpdateSaleItemStatusDto {
+  @IsOptional()
   @IsString()
-  saleItemId: string;
+  saleItemId?: string;
 
   @IsOptional()
   @IsString()

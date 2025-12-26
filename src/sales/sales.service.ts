@@ -8,6 +8,7 @@ import { UpdateSaleStatusDto, UpdateSaleItemStatusDto } from './dto/update-sale.
 import { MenusService } from '../menus/menus.service';
 import { RestaurantsService } from '../restaurants/restaurants.service';
 import { EventsService } from '../events/events.service';
+import { Role } from '../common/enums/role.enum';
 
 @Injectable()
 export class SalesService {
@@ -25,20 +26,48 @@ export class SalesService {
     // Verificar que el restaurante existe
     const restaurant = await this.restaurantsService.findOne(restaurantId);
     
-    // Obtener los menús del día actual
+    // Obtener los menús del día actual primero
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const menus = await this.menusService.findAll(restaurantId, today);
+    const todayMenus = await this.menusService.findAll(restaurantId, today);
 
     let total = 0;
     const saleItems: SaleItem[] = [];
 
     // Validar y crear items
     for (const itemDto of createSaleDto.items) {
-      const menu = menus.find(m => m.id === itemDto.menuId);
+      // Buscar primero en los menús del día actual
+      let menu = todayMenus.find(m => m.id === itemDto.menuId);
+      
+      // Si no se encuentra en los menús de hoy, buscar por ID sin restricción de fecha
+      if (!menu) {
+        try {
+          menu = await this.menusService.findOne(itemDto.menuId);
+          
+          // Verificar que el menú pertenece al restaurante correcto
+          if (menu.restaurantId !== restaurantId) {
+            throw new NotFoundException(`Menu item with ID ${itemDto.menuId} does not belong to this restaurant`);
+          }
+          
+          // Verificar que el menú está disponible
+          if (!menu.available) {
+            throw new BadRequestException(`Menu item "${menu.name}" is not available`);
+          }
+          
+          // Verificar que hay suficiente cantidad
+          if (menu.quantity < itemDto.quantity) {
+            throw new BadRequestException(`Insufficient quantity for "${menu.name}". Available: ${menu.quantity}, Requested: ${itemDto.quantity}`);
+          }
+        } catch (error) {
+          if (error instanceof NotFoundException || error instanceof BadRequestException) {
+            throw error;
+          }
+          throw new NotFoundException(`Menu item with ID ${itemDto.menuId} not found`);
+        }
+      }
       
       if (!menu) {
-        throw new NotFoundException(`Menu item with ID ${itemDto.menuId} not found for today`);
+        throw new NotFoundException(`Menu item with ID ${itemDto.menuId} not found`);
       }
 
       if (!menu.available) {
@@ -104,6 +133,41 @@ export class SalesService {
       query.andWhere('sale.cashierId = :userId', { userId });
     }
 
+    const sales = await query.getMany();
+    
+    // Actualizar estados de ventas basado en el estado de sus items
+    for (const sale of sales) {
+      if (sale.items && sale.items.length > 0) {
+        const hasPreparingItems = sale.items.some(i => i.status === SaleItemStatus.PREPARING);
+        const hasReadyItems = sale.items.some(i => i.status === SaleItemStatus.READY);
+        const allReady = sale.items.every(i => i.status === SaleItemStatus.READY || i.status === SaleItemStatus.DELIVERED);
+        const allDelivered = sale.items.every(i => i.status === SaleItemStatus.DELIVERED);
+        
+        let shouldUpdate = false;
+        let newStatus: SaleStatus | null = null;
+        
+        if (allDelivered && sale.status !== SaleStatus.DELIVERED) {
+          newStatus = SaleStatus.DELIVERED;
+          shouldUpdate = true;
+        } else if (allReady && sale.status !== SaleStatus.READY) {
+          newStatus = SaleStatus.READY;
+          shouldUpdate = true;
+        } else if (hasPreparingItems && (sale.status === SaleStatus.PENDING || sale.status === SaleStatus.CONFIRMED)) {
+          newStatus = SaleStatus.PREPARING;
+          shouldUpdate = true;
+        } else if (hasReadyItems && sale.status === SaleStatus.PREPARING) {
+          // Si hay items listos pero no todos, mantener en preparing
+          // pero si todos están listos, ya se actualizó arriba
+        }
+        
+        if (shouldUpdate && newStatus) {
+          sale.status = newStatus;
+          await this.salesRepository.save(sale);
+        }
+      }
+    }
+    
+    // Recargar las ventas actualizadas
     return query.getMany();
   }
 
@@ -160,6 +224,16 @@ export class SalesService {
   }
 
   async updateItemStatus(saleId: string, updateDto: UpdateSaleItemStatusDto, restaurantId: string, userRole: string, staffRole?: string): Promise<SaleItem> {
+    console.log('🔧 updateItemStatus called:', { saleId, updateDto, restaurantId, userRole, staffRole })
+    
+    if (!updateDto.saleItemId) {
+      throw new BadRequestException('saleItemId is required');
+    }
+    
+    if (!updateDto.status) {
+      throw new BadRequestException('status is required');
+    }
+    
     const sale = await this.findOne(saleId, restaurantId, userRole, staffRole);
 
     const item = sale.items.find(i => i.id === updateDto.saleItemId);
@@ -167,25 +241,62 @@ export class SalesService {
       throw new NotFoundException(`Sale item with ID ${updateDto.saleItemId} not found`);
     }
 
+    console.log('📦 Current item status:', item.status, 'Requested status:', updateDto.status)
+
     if (updateDto.status) {
       // Validar transiciones según rol
-      if (staffRole === 'cook') {
-        if (!['preparing', 'ready'].includes(updateDto.status)) {
-          throw new ForbiddenException('Cooks can only set item status to preparing or ready');
+      // Owners y cocineros pueden gestionar el estado de los items
+      // userRole puede venir como enum Role.OWNER ('owner') o como string 'owner'
+      const isOwner = userRole === 'owner' || userRole === Role.OWNER
+      const canManageKitchen = staffRole === 'cook' || isOwner || staffRole === 'administrator' || staffRole === 'manager'
+      console.log('👤 Permission check:', { isOwner, canManageKitchen, userRole, staffRole })
+      
+      if (canManageKitchen) {
+        // Cocineros y owners pueden: iniciar preparación (pending -> preparing), marcar como listo (preparing -> ready), o despachar (preparing/ready -> delivered)
+        if (!['preparing', 'ready', 'delivered'].includes(updateDto.status)) {
+          throw new ForbiddenException('Can only set item status to preparing, ready, or delivered');
+        }
+        // Validar transición válida desde el estado actual
+        if (item.status === SaleItemStatus.PENDING && updateDto.status !== 'preparing') {
+          throw new ForbiddenException('Can only start preparing from pending status');
+        }
+        if (item.status === SaleItemStatus.PREPARING && !['ready', 'delivered'].includes(updateDto.status)) {
+          throw new ForbiddenException('Can only mark as ready or dispatch from preparing status');
+        }
+        if (item.status === SaleItemStatus.READY && updateDto.status !== 'delivered') {
+          throw new ForbiddenException('Can only dispatch from ready status');
         }
       } else if (staffRole === 'waiter') {
         if (updateDto.status !== 'delivered') {
           throw new ForbiddenException('Waiters can only mark items as delivered');
         }
+      } else {
+        throw new ForbiddenException('You do not have permission to update item status');
       }
 
       item.status = updateDto.status as SaleItemStatus;
       await this.saleItemsRepository.save(item);
 
-      // Verificar si todos los items están listos
+      // Actualizar estado de la venta basado en los estados de los items
+      const hasPreparingItems = sale.items.some(i => i.status === SaleItemStatus.PREPARING);
+      const hasReadyItems = sale.items.some(i => i.status === SaleItemStatus.READY);
       const allReady = sale.items.every(i => i.status === SaleItemStatus.READY || i.status === SaleItemStatus.DELIVERED);
-      if (allReady && sale.status === SaleStatus.PREPARING) {
+      const allDelivered = sale.items.every(i => i.status === SaleItemStatus.DELIVERED);
+
+      // Actualizar estado de la venta según el progreso de los items
+      if (allDelivered && sale.status !== SaleStatus.DELIVERED) {
+        sale.status = SaleStatus.DELIVERED;
+        await this.salesRepository.save(sale);
+      } else if (allReady && sale.status !== SaleStatus.READY) {
         sale.status = SaleStatus.READY;
+        await this.salesRepository.save(sale);
+      } else if (hasPreparingItems && (sale.status === SaleStatus.PENDING || sale.status === SaleStatus.CONFIRMED)) {
+        // Si algún item está en preparación y la venta está pendiente o confirmada, cambiar a preparando
+        sale.status = SaleStatus.PREPARING;
+        await this.salesRepository.save(sale);
+      } else if (updateDto.status === SaleItemStatus.PREPARING && sale.status === SaleStatus.PENDING) {
+        // Si se empieza a preparar un item y la venta está pendiente, confirmarla primero
+        sale.status = SaleStatus.CONFIRMED;
         await this.salesRepository.save(sale);
       }
 
@@ -200,7 +311,7 @@ export class SalesService {
     return this.salesRepository.find({
       where: {
         restaurantId,
-        status: In([SaleStatus.CONFIRMED, SaleStatus.PREPARING]),
+        status: In([SaleStatus.PENDING, SaleStatus.CONFIRMED, SaleStatus.PREPARING]),
       },
       relations: ['cashier', 'items'],
       order: { createdAt: 'ASC' },

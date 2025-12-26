@@ -53,6 +53,10 @@ export class RestaurantsService {
         'restaurant.rating',
         'restaurant.totalReviews',
         'restaurant.isPromoted',
+        'restaurant.promotionText',
+        'restaurant.promotionImage',
+        'restaurant.promotionStartDate',
+        'restaurant.promotionEndDate',
         'owner.id',
         'owner.firstName',
         'owner.lastName',
@@ -86,7 +90,14 @@ export class RestaurantsService {
       query.orderBy('restaurant.isPromoted', 'DESC').addOrderBy('restaurant.rating', 'DESC');
     }
 
-    return query.getMany();
+    const results = await query.getMany();
+    
+    // Eliminar duplicados por ID (por si acaso hay algún problema con el query)
+    const uniqueResults = Array.from(
+      new Map(results.map((rest) => [rest.id, rest])).values()
+    );
+    
+    return uniqueResults;
   }
 
   async findOne(id: string): Promise<Restaurant> {

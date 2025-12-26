@@ -13,7 +13,9 @@ async function bootstrap() {
   app.enableCors({
     origin: [
       frontendUrl,
+      'http://localhost:3000',
       'http://localhost:3001',
+      /^http:\/\/192\.168\.\d+\.\d+:3000$/, // Permitir cualquier IP local en puerto 3000
       /^http:\/\/192\.168\.\d+\.\d+:3001$/, // Permitir cualquier IP local en puerto 3001
     ],
     credentials: true,

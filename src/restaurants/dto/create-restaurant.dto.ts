@@ -57,5 +57,15 @@ export class CreateRestaurantDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  maxWaitTimeEnabled?: boolean;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(1)
+  @Max(1440) // Máximo 24 horas (1440 minutos)
+  maxWaitTimeMinutes?: number;
 }
 
