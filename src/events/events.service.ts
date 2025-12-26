@@ -38,7 +38,7 @@ export class EventsService {
     this.subscriptions.delete(subscriptionId);
   }
 
-  // Emit restaurant status change to all clients (including unauthenticated)
+  // Emit restaurant status change to all clients, admins, and owners (including unauthenticated)
   emitRestaurantStatus(restaurantId: string, isOpen: boolean, message: string): void {
     const event = {
       type: 'restaurant:status',
@@ -52,11 +52,14 @@ export class EventsService {
 
     console.log(`📡 Emitting restaurant:status event to ${this.subscriptions.size} subscriptions`);
     
-    // Send to all subscriptions (clients and unauthenticated users)
+    // Send to all subscriptions (clients, admins, owners, and unauthenticated users)
     let sentCount = 0;
     this.subscriptions.forEach((sub) => {
-      // Send to all client subscriptions (including unauthenticated users with role 'client')
-      if (sub.userRole === 'client') {
+      // Send to clients, admins, and owners
+      // Admins need to see status changes for all restaurants
+      // Owners need to see status changes for their own restaurant
+      // Clients need to see status changes for all restaurants
+      if (sub.userRole === 'client' || sub.userRole === 'admin' || sub.userRole === 'owner') {
         try {
           sub.callback(event);
           sentCount++;
@@ -66,7 +69,7 @@ export class EventsService {
       }
     });
     
-    console.log(`✅ Event sent to ${sentCount} client(s)`);
+    console.log(`✅ Event sent to ${sentCount} subscription(s) (clients, admins, owners)`);
   }
 
   // Emit new reservation to restaurant owner
@@ -156,5 +159,35 @@ export class EventsService {
         }
       }
     });
+  }
+
+  // Emit restaurant hours update to all clients (including unauthenticated)
+  emitRestaurantHoursUpdated(restaurantId: string, openingHours: any): void {
+    const event = {
+      type: 'restaurant:hours-updated',
+      data: {
+        restaurantId,
+        openingHours,
+        timestamp: new Date().toISOString(),
+      },
+    };
+
+    console.log(`📡 Emitting restaurant:hours-updated event to ${this.subscriptions.size} subscriptions`);
+    
+    // Send to all subscriptions (clients and unauthenticated users)
+    let sentCount = 0;
+    this.subscriptions.forEach((sub) => {
+      // Send to all client subscriptions (including unauthenticated users with role 'client')
+      if (sub.userRole === 'client') {
+        try {
+          sub.callback(event);
+          sentCount++;
+        } catch (error) {
+          console.error(`Error sending event to subscription ${sub.id}:`, error);
+        }
+      }
+    });
+    
+    console.log(`✅ Event sent to ${sentCount} client(s)`);
   }
 }

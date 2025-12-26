@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CacheModule } from '@nestjs/cache-manager';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import type { RedisClientOptions } from 'redis';
 import { redisStore } from 'cache-manager-redis-store';
 
@@ -91,6 +92,9 @@ import { SalesModule } from './sales/sales.module';
         limit: 100,
       },
     ]),
+
+    // Schedule Module for Cron Jobs
+    ScheduleModule.forRoot(),
 
     // Feature Modules
     AuthModule,

@@ -97,7 +97,29 @@ export class RestaurantsService {
       new Map(results.map((rest) => [rest.id, rest])).values()
     );
     
-    return uniqueResults;
+    // Calcular isOpen basado en horarios para cada restaurante
+    const restaurantsWithCalculatedStatus = uniqueResults.map(restaurant => {
+      const calculatedIsOpen = this.calculateIsOpenFromHours(restaurant.openingHours);
+      
+      // Solo actualizar si el estado calculado es diferente al almacenado
+      if (restaurant.isOpen !== calculatedIsOpen) {
+        restaurant.isOpen = calculatedIsOpen;
+        // Guardar el cambio en la base de datos (sin await para no bloquear)
+        this.restaurantsRepository.update(restaurant.id, { isOpen: calculatedIsOpen }).catch(err => {
+          console.error(`Error updating isOpen for restaurant ${restaurant.id}:`, err);
+        });
+        
+        // Emitir evento de cambio de estado
+        const message = calculatedIsOpen 
+          ? `${restaurant.name} está ahora abierto` 
+          : `${restaurant.name} está ahora cerrado`;
+        this.eventsService.emitRestaurantStatus(restaurant.id, calculatedIsOpen, message);
+      }
+      
+      return restaurant;
+    });
+    
+    return restaurantsWithCalculatedStatus;
   }
 
   async findOne(id: string): Promise<Restaurant> {
@@ -110,7 +132,66 @@ export class RestaurantsService {
       throw new NotFoundException(`Restaurant with ID ${id} not found`);
     }
 
+    // NO recalcular isOpen automáticamente en findOne
+    // El cron job se encargará de actualizar el estado en el momento correcto
+    // Esto evita cambios inmediatos cuando se consulta el restaurante
+    // Solo el cron job debe actualizar isOpen basado en horarios
+
     return restaurant;
+  }
+
+  /**
+   * Calcula si un restaurante está abierto basado en sus horarios y la hora actual
+   */
+  private calculateIsOpenFromHours(openingHours: any): boolean {
+    if (!openingHours || typeof openingHours !== 'object') {
+      return false;
+    }
+
+    const now = new Date();
+    const currentDay = now.getDay(); // 0 = Domingo, 1 = Lunes, ..., 6 = Sábado
+    
+    // Mapear día de la semana a clave de openingHours
+    const dayMap: Record<number, string> = {
+      0: 'sunday',
+      1: 'monday',
+      2: 'tuesday',
+      3: 'wednesday',
+      4: 'thursday',
+      5: 'friday',
+      6: 'saturday',
+    };
+
+    const todayKey = dayMap[currentDay];
+    const todayHours = openingHours[todayKey];
+
+    // Si el día no está configurado o está cerrado, retornar false
+    if (!todayHours || !todayHours.open) {
+      return false;
+    }
+
+    // Si no tiene horarios de apertura/cierre, asumir que está abierto si open = true
+    if (!todayHours.openTime || !todayHours.closeTime) {
+      return todayHours.open;
+    }
+
+    // Convertir hora actual a minutos desde medianoche
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    
+    // Convertir horarios de apertura y cierre a minutos
+    const [openHour, openMin] = todayHours.openTime.split(':').map(Number);
+    const [closeHour, closeMin] = todayHours.closeTime.split(':').map(Number);
+    const openMinutes = openHour * 60 + openMin;
+    const closeMinutes = closeHour * 60 + closeMin;
+
+    // Verificar si la hora actual está dentro del rango
+    if (openMinutes <= closeMinutes) {
+      // Horario normal (ej: 09:00 - 22:00)
+      return currentMinutes >= openMinutes && currentMinutes < closeMinutes;
+    } else {
+      // Horario que cruza medianoche (ej: 22:00 - 02:00)
+      return currentMinutes >= openMinutes || currentMinutes < closeMinutes;
+    }
   }
 
   async findByOwnerId(ownerId: string): Promise<Restaurant | null> {
@@ -211,7 +292,20 @@ export class RestaurantsService {
     }
 
     restaurant.openingHours = openingHours;
-    return this.restaurantsRepository.save(restaurant);
+    
+    // NO recalcular isOpen inmediatamente al actualizar horarios
+    // El cron job se encargará de actualizar el estado en el momento correcto
+    // Esto evita que el restaurante se cierre/abra inmediatamente al cambiar los horarios
+    const savedRestaurant = await this.restaurantsRepository.save(restaurant);
+
+    // Emit SSE event to notify all clients about hours update
+    console.log(`📡 Emitting restaurant hours update via SSE: ${savedRestaurant.id}`);
+    this.eventsService.emitRestaurantHoursUpdated(
+      savedRestaurant.id,
+      openingHours
+    );
+
+    return savedRestaurant;
   }
 
   async toggleOpenStatus(id: string, userId: string): Promise<Restaurant> {
